@@ -1,0 +1,41 @@
+# worker-ghb-http — пример конфигурации
+# Скопируйте в config.yaml и заполните своими данными.
+# developer_id ("ghb") зашит в бинарь — в конфиге не указывается.
+
+service:
+  # Базовый URL сервиса мониторинга
+  base_url: "https://stroi.homes"
+  # true — использовать SSE-стрим (рекомендуется); false — только REST-поллинг
+  use_sse: true
+  # Интервал REST-поллинга в секундах (используется если SSE недоступен)
+  poll_interval_seconds: 60
+
+telegram:
+  # Токен вашего Telegram-бота (создайте через @BotFather)
+  bot_token: "1234567890:AAABBBCCCDDDEEEFFFGGG..."
+  # Ваш Telegram chat_id (узнать: @userinfobot)
+  chat_id: "987654321"
+
+# Персональные данные для авторегистрации.
+# ВНИМАНИЕ: эта секция при сохранении шифруется алгоритмом AES-256-GCM.
+# В файле хранится поле personal_data_encrypted (base64), а не эта секция.
+# Используйте `worker-ghb-http init` для первичной настройки.
+personal_data:
+  full_name: "Иванов Иван Иванович"
+  phone: "+79001234567"
+  birth_date: "1990-01-15"
+  # Дополнительные поля по документации GHB (будут добавлены в следующей версии)
+
+# Список объектов для мониторинга
+watch_list:
+    # Конкретный объект по его ID на сайте GHB
+  - object_external_id: "obj-123"
+    # Уведомлять в Telegram когда открывается регистрация
+    notify_on_open: true
+    # Автоматически регистрироваться (требует заполненного personal_data)
+    auto_register: true
+
+    # "*" — все объекты застройщика
+  - object_external_id: "*"
+    notify_on_open: true
+    auto_register: false
