@@ -104,6 +104,11 @@ func (c *Client) connect(ctx context.Context, lastEventID *string) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// SSE comments (keepalive lines starting with ":") — ignore
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+
 		switch {
 		case line == "":
 			// Empty line = dispatch event
@@ -131,9 +136,6 @@ func (c *Client) connect(ctx context.Context, lastEventID *string) error {
 
 		case strings.HasPrefix(line, "data:"):
 			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-
-		case strings.HasPrefix(line, ":"):
-			// keepalive comment — ignore
 		}
 	}
 
