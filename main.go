@@ -12,6 +12,7 @@ import (
 	"github.com/stroi-homes/worker-ghb-http/internal/config"
 	"github.com/stroi-homes/worker-ghb-http/internal/notifier"
 	"github.com/stroi-homes/worker-ghb-http/internal/polling"
+	"github.com/stroi-homes/worker-ghb-http/internal/registrar"
 	"github.com/stroi-homes/worker-ghb-http/internal/sse"
 	"github.com/stroi-homes/worker-ghb-http/internal/watchlist"
 )
@@ -77,23 +78,58 @@ func main() {
 	// Setup watchlist matcher
 	wl := watchlist.New(cfg.WatchList)
 
+	// Setup registrar
+	reg := registrar.NewGHBRegistrar()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// smsCodeFn: ask the user for SMS code via Telegram message reply.
+	// In this implementation the user types the code and sends it back to the bot.
+	// The bot receives it via Telegram webhook/polling (future enhancement).
+	// For now: prompt on stdin as a simple synchronous fallback.
+	smsCodeFn := func(innerCtx context.Context) (string, error) {
+		if err := tg.Send(innerCtx, "📲 Введите SMS-код, полученный от GHB, и отправьте его мне в ответ на это сообщение."); err != nil {
+			log.Printf("telegram send error: %v", err)
+		}
+		// Await Telegram reply via long-poll (simplified: wait for next message in a background goroutine).
+		// For a full implementation, integrate with Telegram Bot API getUpdates loop.
+		// Here we block on stdin as a synchronous fallback (works for interactive use).
+		log.Printf("[sms-code] waiting for SMS code on stdin (or Telegram)...")
+		fmt.Print("Введите SMS-код: ")
+		var code string
+		if _, err := fmt.Scanln(&code); err != nil {
+			return "", fmt.Errorf("read SMS code: %w", err)
+		}
+		return code, nil
+	}
+
 	// Event handler — called by SSE client or polling fallback
 	handler := func(eventType, externalID string, data map[string]any) {
+		if eventType != "REGISTRATION_OPENED" {
+			return
+		}
 		entries := wl.Match(externalID)
 		for _, entry := range entries {
-			if !entry.NotifyOnOpen {
-				continue
-			}
-			msg := tg.FormatRegistrationOpened(externalID, data)
-			if err := tg.Send(ctx, msg); err != nil {
-				log.Printf("telegram send error: %v", err)
+			if entry.NotifyOnOpen {
+				msg := tg.FormatRegistrationOpened(externalID, data)
+				if err := tg.Send(ctx, msg); err != nil {
+					log.Printf("telegram send error: %v", err)
+				}
 			}
 			if entry.AutoRegister {
-				log.Printf("auto-register triggered for object %s (TODO: implement registrar)", externalID)
-				// TODO: invoke GHBRegistrar once implemented
+				go func(eid string) {
+					if err := reg.Register(ctx, eid, cfg.PersonalData, smsCodeFn); err != nil {
+						log.Printf("auto-register error for %s: %v", eid, err)
+						if sendErr := tg.Send(ctx, tg.FormatRegistrationError(eid, err)); sendErr != nil {
+							log.Printf("telegram send error: %v", sendErr)
+						}
+					} else {
+						if sendErr := tg.Send(ctx, tg.FormatRegistrationSuccess(eid)); sendErr != nil {
+							log.Printf("telegram send error: %v", sendErr)
+						}
+					}
+				}(externalID)
 			}
 		}
 	}
