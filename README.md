@@ -1,6 +1,7 @@
 # worker-ghb-http
 
-Воркер для автоматического уведомления об открытии регистрации на объекты застройщика **GHB**. Работает через прямые HTTP-запросы к API GHB и публичному SSE-стриму сервиса мониторинга [stroi.homes](https://stroi.homes).
+Воркер для автоматического уведомления об открытии регистрации на объекты застройщика **GHB**. Работает через прямые
+HTTP-запросы к API GHB и публичному SSE-стриму сервиса мониторинга [stroi.homes](https://stroi.homes).
 
 **Застройщик:** GHB (зашит в бинарь, не читается из конфига)
 **Лицензия:** MIT
@@ -24,13 +25,13 @@ chmod +x worker-ghb-http
 
 ### Поддерживаемые платформы
 
-| Файл | ОС | Архитектура |
-|---|---|---|
-| `worker-ghb-http-linux-amd64` | Linux | x86_64 |
-| `worker-ghb-http-linux-arm64` | Linux | ARM64 |
-| `worker-ghb-http-darwin-amd64` | macOS | Intel |
-| `worker-ghb-http-darwin-arm64` | macOS | Apple Silicon |
-| `worker-ghb-http-windows-amd64.exe` | Windows | x86_64 |
+| Файл                                | ОС      | Архитектура   |
+|-------------------------------------|---------|---------------|
+| `worker-ghb-http-linux-amd64`       | Linux   | x86_64        |
+| `worker-ghb-http-linux-arm64`       | Linux   | ARM64         |
+| `worker-ghb-http-darwin-amd64`      | macOS   | Intel         |
+| `worker-ghb-http-darwin-arm64`      | macOS   | Apple Silicon |
+| `worker-ghb-http-windows-amd64.exe` | Windows | x86_64        |
 
 ---
 
@@ -53,6 +54,7 @@ cp config.example.yaml config.yaml
 ### 2. Заполнить конфиг
 
 Обязательные поля:
+
 - `telegram.bot_token` — токен вашего Telegram-бота (создать через [@BotFather](https://t.me/BotFather))
 - `telegram.chat_id` — ваш Telegram chat_id (узнать через [@userinfobot](https://t.me/userinfobot))
 - `watch_list` — список объектов для отслеживания
@@ -77,10 +79,10 @@ WORKER_PASSWORD=мой_пароль ./worker-ghb-http --config config.yaml
 
 ## Режимы работы
 
-| Настройка | Поведение |
-|---|---|
+| Настройка                                      | Поведение                     |
+|------------------------------------------------|-------------------------------|
 | `notify_on_open: true`, `auto_register: false` | Только уведомление в Telegram |
-| `notify_on_open: true`, `auto_register: true` | Уведомление + авторегистрация |
+| `notify_on_open: true`, `auto_register: true`  | Уведомление + авторегистрация |
 
 ---
 
@@ -90,17 +92,17 @@ WORKER_PASSWORD=мой_пароль ./worker-ghb-http --config config.yaml
 
 ```ini
 [Unit]
-Description=worker-ghb-http
-After=network.target
+Description = worker-ghb-http
+After = network.target
 
 [Service]
-ExecStart=/opt/worker-ghb-http/worker-ghb-http --config /opt/worker-ghb-http/config.yaml
-Environment=WORKER_PASSWORD=мой_пароль
-Restart=always
-RestartSec=5
+ExecStart = /opt/worker-ghb-http/worker-ghb-http --config /opt/worker-ghb-http/config.yaml
+Environment = WORKER_PASSWORD=мой_пароль
+Restart = always
+RestartSec = 5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy = multi-user.target
 ```
 
 ### launchd (macOS)
@@ -109,18 +111,25 @@ WantedBy=multi-user.target
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
 <plist version="1.0">
-<dict>
-    <key>Label</key><string>homes.stroi.worker-ghb-http</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/worker-ghb-http</string>
-        <string>--config</string><string>/usr/local/etc/worker-ghb-http/config.yaml</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict><key>WORKER_PASSWORD</key><string>мой_пароль</string></dict>
-    <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
-</dict>
+    <dict>
+        <key>Label</key>
+        <string>homes.stroi.worker-ghb-http</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/usr/local/bin/worker-ghb-http</string>
+            <string>--config</string>
+            <string>/usr/local/etc/worker-ghb-http/config.yaml</string>
+        </array>
+        <key>EnvironmentVariables</key>
+        <dict>
+            <key>WORKER_PASSWORD</key>
+            <string>мой_пароль</string>
+        </dict>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+    </dict>
 </plist>
 ```
 
