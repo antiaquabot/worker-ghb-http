@@ -15,18 +15,25 @@ type Notifier = Telegram
 
 // Telegram sends notifications via Telegram Bot API.
 type Telegram struct {
+	enabled  bool
 	botToken string
 	chatID   string
 	client   *http.Client
 }
 
 // New creates a new Telegram notifier.
-func New(botToken, chatID string) *Telegram {
+func New(enabled bool, botToken, chatID string) *Telegram {
 	return &Telegram{
+		enabled:  enabled,
 		botToken: botToken,
 		chatID:   chatID,
 		client:   &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// IsEnabled returns true if Telegram notifications are enabled.
+func (t *Telegram) IsEnabled() bool {
+	return t.enabled
 }
 
 // Send sends a text message (HTML parse_mode) to the configured chat.
@@ -84,6 +91,16 @@ func (t *Telegram) FormatRegistrationOpened(externalID string, data map[string]a
 	return msg
 }
 
+// FormatSMSCodeRequest formats the SMS code request message with an expiry deadline.
+func (t *Telegram) FormatSMSCodeRequest(deadline time.Time) string {
+	return fmt.Sprintf(
+		"📲 На ваш номер телефона отправлен код подтверждения.\n"+
+			"Введите код до [%s] — иначе регистрация завершится с ошибкой.\n"+
+			"Отправьте код ответным сообщением.",
+		deadline.Format("02.01.2006 15:04:05"),
+	)
+}
+
 // FormatRegistrationClosed formats the REGISTRATION_CLOSED notification.
 func (t *Telegram) FormatRegistrationClosed(externalID string) string {
 	return fmt.Sprintf(
@@ -111,4 +128,77 @@ func (t *Telegram) FormatRegistrationError(externalID string, err error) string 
 // FormatServiceUnavailable formats the service unavailable notification.
 func (t *Telegram) FormatServiceUnavailable(minutes int) string {
 	return fmt.Sprintf("⚠️ Сервис мониторинга недоступен более %d мин.", minutes)
+}
+
+func (t *Telegram) WaitForCode(ctx context.Context, requestMessageID int) (string, error) {
+	if t.botToken == "" || t.chatID == "" {
+		return "", nil
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", t.botToken)
+
+	type update struct {
+		Message struct {
+			Text string `json:"text"`
+			Chat struct {
+				ID int64 `json:"id"`
+			} `json:"chat"`
+			MessageID int `json:"message_id"`
+		} `json:"message"`
+	}
+
+	var lastUpdateID int
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			continue
+		}
+
+		q := req.URL.Query()
+		q.Set("offset", fmt.Sprintf("%d", lastUpdateID+1))
+		q.Set("timeout", "30")
+		req.URL.RawQuery = q.Encode()
+
+		resp, err := t.client.Do(req)
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+
+		var result struct {
+			OK     bool     `json:"ok"`
+			Error  string   `json:"error_string,omitempty"`
+			Result []update `json:"result"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			time.Sleep(time.Second)
+			continue
+		}
+		resp.Body.Close()
+
+		if !result.OK {
+			time.Sleep(time.Second)
+			continue
+		}
+
+		for _, u := range result.Result {
+			lastUpdateID = u.Message.MessageID
+			if u.Message.Chat.ID != 0 && u.Message.Text != "" {
+				if requestMessageID > 0 {
+					if u.Message.MessageID > requestMessageID {
+						return u.Message.Text, nil
+					}
+				} else {
+					return u.Message.Text, nil
+				}
+			}
+		}
+	}
 }
