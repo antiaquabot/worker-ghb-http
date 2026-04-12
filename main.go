@@ -85,12 +85,14 @@ func main() {
 	defer cancel()
 
 	// smsCodeFn: ask the user for SMS code.
-	// If Telegram enabled: send message via Telegram and wait for reply.
-	// If Telegram disabled: prompt via terminal.
+	// If Telegram enabled: send message with deadline via Telegram and wait for reply.
+	// If Telegram disabled: prompt via terminal with deadline shown.
 	var smsCodeFn func(context.Context) (string, error)
 	if tg.IsEnabled() {
 		smsCodeFn = func(innerCtx context.Context) (string, error) {
-			if err := tg.Send(innerCtx, "📲 Введите SMS-код, полученный от GHB, и отправьте его мне в ответ на это сообщение."); err != nil {
+			deadline, _ := innerCtx.Deadline()
+			msg := tg.FormatSMSCodeRequest(deadline)
+			if err := tg.Send(innerCtx, msg); err != nil {
 				log.Printf("telegram send error: %v", err)
 				return "", err
 			}
@@ -104,7 +106,8 @@ func main() {
 		}
 	} else {
 		smsCodeFn = func(innerCtx context.Context) (string, error) {
-			log.Printf("[sms-code] введите SMS-код, полученный от GHB:")
+			deadline, _ := innerCtx.Deadline()
+			log.Printf("[sms-code] введите SMS-код до [%s]:", deadline.Format("02.01.2006 15:04:05"))
 			var code string
 			fmt.Scanln(&code)
 			log.Printf("[sms-code] received code from terminal: %s", code)
@@ -148,12 +151,16 @@ func main() {
 							if sendErr := tg.Send(ctx, tg.FormatRegistrationError(eid, err)); sendErr != nil {
 								log.Printf("telegram send error: %v", sendErr)
 							}
+						} else {
+							log.Printf("❌ Ошибка авторегистрации: %s — %v", eid, err)
 						}
 					} else {
 						if tg.IsEnabled() {
 							if sendErr := tg.Send(ctx, tg.FormatRegistrationSuccess(eid)); sendErr != nil {
 								log.Printf("telegram send error: %v", sendErr)
 							}
+						} else {
+							log.Printf("✅ Авторегистрация выполнена: %s", eid)
 						}
 					}
 				}(externalID, data)
