@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,11 +21,31 @@ const (
 	smsWaitTimeout = 3 * time.Minute
 )
 
+var (
+	megaAlertRe = regexp.MustCompile(`(?i)<[^>]*class="[^"]*megaalert-content[^"]*"[^>]*>([\s\S]*?)</[^>]+>`)
+	htmlTagRe   = regexp.MustCompile(`<[^>]+>`)
+	spaceRe     = regexp.MustCompile(`\s+`)
+)
+
+// extractError parses the .megaalert-content block from HTML and returns its
+// trimmed inner text, or "" if not found.
+func extractError(body string) string {
+	m := megaAlertRe.FindStringSubmatch(body)
+	if m == nil {
+		return ""
+	}
+	text := htmlTagRe.ReplaceAllString(m[1], " ")
+	text = strings.TrimSpace(spaceRe.ReplaceAllString(text, " "))
+	text = strings.ReplaceAll(text, "•", "")
+	return strings.TrimSpace(text)
+}
+
 // Registrar performs auto-registration on the developer's website.
 type Registrar interface {
-	// Register starts a registration flow for the given objectID.
+	// Register starts a registration flow using the registration URL from the event.
+	// regURL is the full registration URL (e.g., "https://reg.ghb.by/register/?id=12345").
 	// smsCodeFn blocks until the user provides the SMS code (via Telegram or stdin).
-	Register(ctx context.Context, objectID string, personalData config.PersonalData, smsCodeFn SMSCodeFunc) error
+	Register(ctx context.Context, objectID string, regURL string, personalData config.PersonalData, smsCodeFn SMSCodeFunc) error
 }
 
 // SMSCodeFunc is called when the server is waiting for an SMS confirmation code.
@@ -59,14 +80,14 @@ func NewGHBRegistrar() *GHBRegistrar {
 }
 
 // Register implements the GHB 4-step online registration flow.
+// regURL is the full registration URL (e.g., "https://reg.ghb.by/register/?id=12345").
 func (r *GHBRegistrar) Register(
 	ctx context.Context,
 	objectID string,
+	regURL string,
 	pd config.PersonalData,
 	smsCodeFn SMSCodeFunc,
 ) error {
-	regURL := fmt.Sprintf("%s/register/?id=%s", regBaseURL, objectID)
-
 	// -----------------------------------------------------------------------
 	// Step 1: GET — acquire session cookie
 	// -----------------------------------------------------------------------
