@@ -61,7 +61,40 @@ cp config.example.yaml config.yaml
 
 Для авторегистрации (`auto_register: true`) также нужно заполнить `personal_data`.
 
-Секция `registration` позволяет настроить таймауты — все поля опциональны, значения по умолчанию приведены в `config.example.yaml`.
+Секция `registration` позволяет настроить таймауты — все поля опциональны, значения по умолчанию приведены в
+`config.example.yaml`.
+
+### Как получить chat_id
+
+1. Создайте бота у [@BotFather](https://t.me/BotFather) и получите токен
+2. Добавьте бота в чат (группу или канал)
+3. Отправьте любое сообщение в чат
+4. Перейдите по ссылке: `https://api.telegram.org/bot<TOKEN>/getUpdates`
+  - Замените `<TOKEN>` на токен вашего бота
+5. В ответе найдите поле `chat.id` — это и есть `chat_id` (отрицательное число для групп)
+
+**Для личных сообщений:**
+
+1. Начните чат с вашим ботом (@username бота)
+2. Откройте `https://api.telegram.org/bot<TOKEN>/getUpdates`
+3. Найдите поле `chat.id` в секции `from` — это ваш личный `chat_id`
+
+Пример ответа:
+
+```json
+{
+  "ok": true,
+  "result": [
+    {
+      "update_id": 123456789,
+      "message": {
+        "chat": {
+          "id": -987654321,
+          "title": "My Group"
+        }
+      }
+    }
+```
 
 ---
 
@@ -89,9 +122,9 @@ WORKER_PASSWORD=мой_пароль ./worker-ghb-http --config config.yaml
 - Запрос SMS-кода — сообщение с дедлайном в чат.
 - Результат авторегистрации (успех / ошибка) — в чат.
 
-| Настройка | Поведение |
-|-----------|-----------|
-| `notify_on_open: true`, `auto_register: false` | Уведомление в Telegram |
+| Настройка                                      | Поведение                                    |
+|------------------------------------------------|----------------------------------------------|
+| `notify_on_open: true`, `auto_register: false` | Уведомление в Telegram                       |
 | `notify_on_open: true`, `auto_register: true`  | Уведомление + авторегистрация через Telegram |
 
 ### Терминальный режим (`telegram.enabled: false`)
