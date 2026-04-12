@@ -2,3 +2,4 @@ dist/
 worker-ghb-http
 worker-ghb-http.exe
 config.yaml
+.claude/
