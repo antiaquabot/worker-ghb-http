@@ -73,7 +73,7 @@ func main() {
 	log.Printf("worker-ghb-http %s started (developer_id=%s)", Version, DeveloperID)
 
 	// Setup notifier
-	tg := notifier.New(cfg.Telegram.BotToken, cfg.Telegram.ChatID)
+	tg := notifier.New(cfg.Telegram.Enabled, cfg.Telegram.BotToken, cfg.Telegram.ChatID)
 
 	// Setup watchlist matcher
 	wl := watchlist.New(cfg.WatchList)
@@ -84,24 +84,32 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// smsCodeFn: ask the user for SMS code via Telegram message reply.
-	// In this implementation the user types the code and sends it back to the bot.
-	// The bot receives it via Telegram webhook/polling (future enhancement).
-	// For now: prompt on stdin as a simple synchronous fallback.
-	smsCodeFn := func(innerCtx context.Context) (string, error) {
-		if err := tg.Send(innerCtx, "📲 Введите SMS-код, полученный от GHB, и отправьте его мне в ответ на это сообщение."); err != nil {
-			log.Printf("telegram send error: %v", err)
+	// smsCodeFn: ask the user for SMS code.
+	// If Telegram enabled: send message via Telegram and wait for reply.
+	// If Telegram disabled: prompt via terminal.
+	var smsCodeFn func(context.Context) (string, error)
+	if tg.IsEnabled() {
+		smsCodeFn = func(innerCtx context.Context) (string, error) {
+			if err := tg.Send(innerCtx, "📲 Введите SMS-код, полученный от GHB, и отправьте его мне в ответ на это сообщение."); err != nil {
+				log.Printf("telegram send error: %v", err)
+				return "", err
+			}
+			log.Printf("[sms-code] waiting for SMS code from Telegram...")
+			code, err := tg.WaitForCode(innerCtx, 0)
+			if err != nil {
+				return "", err
+			}
+			log.Printf("[sms-code] received code from Telegram: %s", code)
+			return code, nil
 		}
-		// Await Telegram reply via long-poll (simplified: wait for next message in a background goroutine).
-		// For a full implementation, integrate with Telegram Bot API getUpdates loop.
-		// Here we block on stdin as a synchronous fallback (works for interactive use).
-		log.Printf("[sms-code] waiting for SMS code on stdin (or Telegram)...")
-		fmt.Print("Введите SMS-код: ")
-		var code string
-		if _, err := fmt.Scanln(&code); err != nil {
-			return "", fmt.Errorf("read SMS code: %w", err)
+	} else {
+		smsCodeFn = func(innerCtx context.Context) (string, error) {
+			log.Printf("[sms-code] введите SMS-код, полученный от GHB:")
+			var code string
+			fmt.Scanln(&code)
+			log.Printf("[sms-code] received code from terminal: %s", code)
+			return code, nil
 		}
-		return code, nil
 	}
 
 	// Event handler — called by SSE client or polling fallback
@@ -112,24 +120,43 @@ func main() {
 		entries := wl.Match(externalID)
 		for _, entry := range entries {
 			if entry.NotifyOnOpen {
-				msg := tg.FormatRegistrationOpened(externalID, data)
-				if err := tg.Send(ctx, msg); err != nil {
-					log.Printf("telegram send error: %v", err)
+				if tg.IsEnabled() {
+					msg := tg.FormatRegistrationOpened(externalID, data)
+					if err := tg.Send(ctx, msg); err != nil {
+						log.Printf("telegram send error: %v", err)
+					}
+				} else {
+					log.Printf("📦 Регистрация открыта: %s", externalID)
+					if title, ok := data["title"].(string); ok && title != "" {
+						log.Printf("   Название: %s", title)
+					}
+					if regURL, ok := data["registration_url"].(string); ok && regURL != "" {
+						log.Printf("   Ссылка: %s", regURL)
+					}
 				}
 			}
 			if entry.AutoRegister {
-				go func(eid string) {
-					if err := reg.Register(ctx, eid, cfg.PersonalData, smsCodeFn); err != nil {
+				go func(eid string, data map[string]any) {
+					regURL, _ := data["registration_url"].(string)
+					if regURL == "" {
+						log.Printf("missing registration_url for %s, skipping auto-register", eid)
+						return
+					}
+					if err := reg.Register(ctx, eid, regURL, cfg.PersonalData, cfg.Registration, smsCodeFn); err != nil {
 						log.Printf("auto-register error for %s: %v", eid, err)
-						if sendErr := tg.Send(ctx, tg.FormatRegistrationError(eid, err)); sendErr != nil {
-							log.Printf("telegram send error: %v", sendErr)
+						if tg.IsEnabled() {
+							if sendErr := tg.Send(ctx, tg.FormatRegistrationError(eid, err)); sendErr != nil {
+								log.Printf("telegram send error: %v", sendErr)
+							}
 						}
 					} else {
-						if sendErr := tg.Send(ctx, tg.FormatRegistrationSuccess(eid)); sendErr != nil {
-							log.Printf("telegram send error: %v", sendErr)
+						if tg.IsEnabled() {
+							if sendErr := tg.Send(ctx, tg.FormatRegistrationSuccess(eid)); sendErr != nil {
+								log.Printf("telegram send error: %v", sendErr)
+							}
 						}
 					}
-				}(externalID)
+				}(externalID, data)
 			}
 		}
 	}
@@ -142,8 +169,10 @@ func main() {
 		go func() {
 			if err := sseClient.Run(ctx); err != nil {
 				log.Printf("SSE client stopped (%v), switching to polling fallback", err)
-				if notifyErr := tg.Send(ctx, "⚠️ SSE недоступен, переключился на REST-поллинг"); notifyErr != nil {
-					log.Printf("telegram send error: %v", notifyErr)
+				if tg.IsEnabled() {
+					if notifyErr := tg.Send(ctx, "⚠️ SSE недоступен, переключился на REST-поллинг"); notifyErr != nil {
+						log.Printf("telegram send error: %v", notifyErr)
+					}
 				}
 				if err := pollingClient.Run(ctx); err != nil {
 					log.Printf("polling client stopped: %v", err)
