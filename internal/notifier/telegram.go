@@ -137,8 +137,12 @@ func (t *Telegram) WaitForCode(ctx context.Context, requestMessageID int) (strin
 
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", t.botToken)
 
+	// update wraps the Telegram Update object.
+	// UpdateID is the sequence number used as the getUpdates offset; it is
+	// completely separate from MessageID and must not be confused with it.
 	type update struct {
-		Message struct {
+		UpdateID int `json:"update_id"` // used for offset advancement
+		Message  struct {
 			Text string `json:"text"`
 			Chat struct {
 				ID int64 `json:"id"`
@@ -147,6 +151,8 @@ func (t *Telegram) WaitForCode(ctx context.Context, requestMessageID int) (strin
 		} `json:"message"`
 	}
 
+	// lastUpdateID tracks the Telegram update_id (not message_id) so that
+	// each getUpdates call fetches only new updates via offset=lastUpdateID+1.
 	var lastUpdateID int
 	for {
 		select {
@@ -189,7 +195,10 @@ func (t *Telegram) WaitForCode(ctx context.Context, requestMessageID int) (strin
 		}
 
 		for _, u := range result.Result {
-			lastUpdateID = u.Message.MessageID
+			// Always advance the offset using update_id, not message_id.
+			if u.UpdateID > lastUpdateID {
+				lastUpdateID = u.UpdateID
+			}
 			if u.Message.Chat.ID != 0 && u.Message.Text != "" {
 				if requestMessageID > 0 {
 					if u.Message.MessageID > requestMessageID {
