@@ -52,36 +52,46 @@ func (c *Client) Run(ctx context.Context) error {
 	ticker := time.NewTicker(time.Duration(c.intervalSecs) * time.Second)
 	defer ticker.Stop()
 
-	// Initial poll
-	c.poll(ctx)
+	c.Poll(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			c.poll(ctx)
+			c.Poll(ctx)
 		}
 	}
 }
 
-func (c *Client) poll(ctx context.Context) {
+// Poll fetches current registration statuses and fires events for state transitions.
+// Exported for testing.
+func (c *Client) Poll(ctx context.Context) {
 	statuses, err := c.fetchStatuses(ctx)
 	if err != nil {
 		log.Printf("polling error: %v", err)
 		return
 	}
 
-	current := make(map[string]bool, len(statuses))
+	// Start from all previously known objects set to closed.
+	// This preserves closed-object state so re-opens are detected.
+	current := make(map[string]bool, len(c.prevState))
+	for id := range c.prevState {
+		current[id] = false
+	}
+
+	// Overwrite with live data; filter to our developer (server ignores developer_id query param).
 	for _, s := range statuses {
+		if s.DeveloperID != c.developerID {
+			continue
+		}
 		current[s.ExternalID] = s.RegistrationOpen
 	}
 
-	// Detect changes vs previous state
 	for id, open := range current {
 		prev, seen := c.prevState[id]
 		if !seen {
-			// First time seeing this object — no event yet
+			// First time seeing this object — no event to avoid startup spam.
 			continue
 		}
 		if open && !prev {

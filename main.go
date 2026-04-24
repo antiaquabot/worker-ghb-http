@@ -106,7 +106,9 @@ func main() {
 			deadline, _ := innerCtx.Deadline()
 			log.Printf("[sms-code] введите SMS-код до [%s]:", deadline.Format("02.01.2006 15:04:05"))
 			var code string
-			fmt.Scanln(&code)
+			if _, err := fmt.Scanln(&code); err != nil {
+				return "", fmt.Errorf("read SMS code: %w", err)
+			}
 			log.Printf("[sms-code] received code from terminal: %s", code)
 			return code, nil
 		}

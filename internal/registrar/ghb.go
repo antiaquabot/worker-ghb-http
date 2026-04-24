@@ -61,7 +61,7 @@ type SMSCodeFunc func(ctx context.Context) (string, error)
 //  1. GET /register/?id=<objectID>          — acquire PHPSESSID session cookie
 //  2. POST /register/?id=<objectID>         — submit personal data (act=reg_user); server sends SMS
 //  3. GET /register/?id=<objectID>          — verify SMS form is present
-//  3.5. [wait for SMS code via smsCodeFn]
+//     3.5. [wait for SMS code via smsCodeFn]
 //  4. POST /register/?id=<objectID>         — submit SMS code (act=conf_user); expect 302 = success
 //  5. GET /register/?id=<objectID>          — verify "Регистрация завершена" on page
 //
