@@ -78,9 +78,6 @@ func main() {
 	// Setup watchlist matcher
 	wl := watchlist.New(cfg.WatchList)
 
-	// Setup registrar
-	reg := registrar.NewGHBRegistrar()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -145,6 +142,7 @@ func main() {
 						log.Printf("missing registration_url for %s, skipping auto-register", eid)
 						return
 					}
+					reg := registrar.NewGHBRegistrar()
 					if err := reg.Register(ctx, eid, regURL, cfg.PersonalData, cfg.Registration, smsCodeFn); err != nil {
 						log.Printf("auto-register error for %s: %v", eid, err)
 						if tg.IsEnabled() {
